@@ -166,34 +166,13 @@ class PtsBackbone(nn.Module):
         min_diff_idx = torch.argmin(diff_size, dim=-1)
         normalized_size = norm_values[min_diff_idx].unsqueeze(-1)
 
-        # normalized_size2= normalized_size.clone()
-        # voxel_data1 = voxel_data.clone()
-        # voxel_data1 = voxel_data1.squeeze(0).squeeze(0).cpu()
-        # data_vis = normalized_size2.numpy().squeeze()
-        # x_coords = voxel_data1[:,:,0].numpy().astype(np.int32)
-        # y_coords = voxel_data1[:,:,1].numpy().astype(np.int32)
-        # image = np.zeros((60,705,3),dtype=np.int8)
-        # data_nor = ((data_vis-np.min(data_vis))/(np.max(data_vis)-np.min(data_vis))*255).astype(np.uint8)
-        # color_map = cv2.COLORMAP_VIRIDIS
-        # for i in range(data_vis.shape[0]):
-        #     x = x_coords[i]
-        #     y = y_coords[i]
-        #     values = data_nor[i]
-        #     for xi,yi,value in zip(x,y,values):
-        #         color = cv2.applyColorMap(np.array([[value]],dtype=np.uint8), color_map)[0,0]
-        #         center = (xi,yi)
-        #
-        #         cv2.circle(image,center,5,color.tolist(),-1)
-        # a =str(data_vis.shape[0])
-        # cv2.imwrite(f'/home/sr4/yjt1/CRN-main/maps/image_{a}.png',image)
+ 
 
 
 
         voxel_data = voxel_data.squeeze(0)
         expanded_voxel_grid = torch.zeros_like(voxel_data)
 
-
-        # 对每个特征维度进行卷积
         for feature in range(voxel_data.shape[2]):
         
 
@@ -206,19 +185,12 @@ class PtsBackbone(nn.Module):
                 mask = (normalized_size1[:, :, :, 0] == size)
                 mask = [mask.unsqueeze(-1) for i in range(5)]
                 mask = torch.cat(mask, dim=-1).cuda()
-                # print('------------------------------------------------------')
-                # print(feature_map.shape)
-                # print(mask.shape)
-                # print("--------------------------------------------------------------------------------------")
-
                 featurei = feature_map * mask
-                # print(featurei.shape)
-                # print("--------------------------------------------------------------------------------------")
+
                 if size == 1:
                     feature1 = featurei
                 if size == 3:
                     gaussian_kernel = self.generate_gaussian_kernel(size, sigma1).unsqueeze(0).unsqueeze(0).cuda()
-
 
                     feature3 = F.conv2d(featurei, gaussian_kernel, padding=1)
 
@@ -228,11 +200,6 @@ class PtsBackbone(nn.Module):
 
 
             expanded_voxel_grid[0, :, feature, :] = feature1.squeeze() + feature3.squeeze() + feature5.squeeze()
-
-            # print((voxel_data-expanded_voxel_grid)*100)
-            # print("------------------------------------------------------------------------------------------------------------------")
-            # print(expanded_voxel_grid)
-
 
         return expanded_voxel_grid
 
@@ -280,54 +247,9 @@ class PtsBackbone(nn.Module):
 
         B, N, P, F = pts.shape
 
-        # mask_size = (B*N, P,F)  # 根据实际数据范围调整
-        # mask = np.zeros(mask_size)
-        # gaussian_kernel = self.gaussian_3d(size=3, sigma=1.0)
         batch_size = B * N
         pts = pts.contiguous().view(B*N, P, F)
-
-        # for i in range (B*N):
-        #     for j in range (P):
-        #         x,y,z = pts[i,j,:3]
-        #         x,y,z = int(x),int(y),int(z)
-        #
-        #         mask[x - 1:x + 2, y - 1:y + 2, z - 1:z + 2] += gaussian_kernel
-        # mask /= mask.max()
-        # # print(mask.shape)
-        # mask = torch.from_numpy(mask).cuda()
-        # mask = mask.float()
-        # print(mask)
-
-        #pts  [12,1536,5]
         voxels, num_points, coors = self.voxelize(pts)
-
-        # mean_feature = torch.mean(voxels[:, :, 0], axis=0)
-        #
-        # # 创建 X 和 Y 坐标
-        # x = np.arange(mean_feature.shape[1])
-        # y = np.arange(mean_feature.shape[0])
-        # X, Y = np.meshgrid(x, y)
-        #
-        # # 可视化
-        # fig, ax = plt.subplots(figsize=(12, 12))
-        #
-        # # 使用 imshow 显示体素数据
-        # cax = ax.imshow(mean_feature, cmap='viridis', interpolation='nearest')
-        #
-        # # 添加颜色条
-        # plt.colorbar(cax, ax=ax, label='Feature Value')
-        #
-        # # 设置图形属性
-        # plt.title(f'Radar Voxel Visualization (Feature {0})')
-        # plt.xlabel('X Coordinate')
-        # plt.ylabel('Y Coordinate')
-        # plt.gca().invert_yaxis()  # Optional: to match the origin at the top-left corner
-        # plt.gca().set_aspect('equal', adjustable='box')
-        #
-        # plt.show()
-        # voxels_m,num,coor = self.voxelize(mask)
-
-        # print(num_points.shape)
 
         if self.times is not None:
             t2.record()
@@ -346,20 +268,16 @@ class PtsBackbone(nn.Module):
         ori_voxel_features = self.pts_voxel_encoder(ori_voxel,num_points,coors)
         ori_voxel_features = torch.sigmoid(ori_voxel_features)
 
-        voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)#[n,64]
-        # print(torch.mean(ori_voxel_features - voxel_features))
+        voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)
+
         voxel_features = (voxel_features+ori_voxel_features)/2
 
-
-        # print(voxel_features.shape)
-        # print("------------------------------------------")
-        x = self.pts_middle_encoder(voxel_features, coors, batch_size)#[12,64,140,88]
+        x = self.pts_middle_encoder(voxel_features, coors, batch_size)
         
         
-        x = self.pts_backbone(x)#0:[12,64,140,88] 1:[12,128,70,44] 2:[12,256,35,22]
-
+        x = self.pts_backbone(x)
         if self.pts_neck is not None:
-            x = self.pts_neck(x)#[12,192,70,44]
+            x = self.pts_neck(x)
 
         if self.times is not None:
             t3.record()
@@ -406,7 +324,6 @@ class PtsBackbone(nn.Module):
 
             with torch.no_grad():
                 context, occupancy = self._forward_single_sweep(ptss[:, sweep_index, ...])
-                # print(context.shape)
                 context_list.append(context)
                 occupancy_list.append(occupancy)
 
